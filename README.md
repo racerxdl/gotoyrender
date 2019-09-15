@@ -8,11 +8,15 @@ It still WIP and doesn't present many of the ShaderToy features. But it does run
 
 ![ShaderBasis](https://user-images.githubusercontent.com/578310/64926847-df410980-d7d8-11e9-8a73-a4ce35599861.jpg)
 
-### Star
+### Star based on flight404
 
 ![Star](https://user-images.githubusercontent.com/578310/64926846-dcdeaf80-d7d8-11e9-800b-5edd4f2d3466.jpg)
 
 ### Neon Parallax by @stormoid
 
 ![Neon Parallax](https://user-images.githubusercontent.com/578310/64926918-f59b9500-d7d9-11e9-8912-89f9c1712d03.jpg)
+
+### Digital Brain by srtuss
+
+![Digital Brain](https://user-images.githubusercontent.com/578310/64927045-0c42eb80-d7dc-11e9-8417-034edd9b0885.jpg)
 

@@ -88,7 +88,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 
 func run() {
 	cfg := pixelgl.WindowConfig{
-		Title:  "Star",
+		Title:  "NeonParalax by @stormoid",
 		Bounds: pixel.R(0, 0, 1024, 768),
 	}
 	win, err := pixelgl.NewWindow(cfg)
