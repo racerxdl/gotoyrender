@@ -1,10 +1,10 @@
 package main
 
 import (
-	"github.com/faiface/glhf"
-	"github.com/faiface/mainthread"
-	"github.com/go-gl/glfw/v3.2/glfw"
+	"github.com/faiface/pixel"
+	"github.com/faiface/pixel/pixelgl"
 	"github.com/racerxdl/gotoyrender/toy"
+	"golang.org/x/image/colornames"
 )
 
 const fragmentToy = `
@@ -25,60 +25,41 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ) {
 `
 
 func run() {
-	var win *glfw.Window
+	cfg := pixelgl.WindowConfig{
+		Title:  "ShaderBasis",
+		Bounds: pixel.R(0, 0, 1024, 768),
+	}
+	win, err := pixelgl.NewWindow(cfg)
+	if err != nil {
+		panic(err)
+	}
 
-	defer func() {
-		mainthread.Call(func() {
-			glfw.Terminate()
-		})
-	}()
-
-	mainthread.Call(func() {
-		glfw.Init()
-
-		glfw.WindowHint(glfw.ContextVersionMajor, 3)
-		glfw.WindowHint(glfw.ContextVersionMinor, 3)
-		glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-		glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
-		glfw.WindowHint(glfw.Resizable, glfw.False)
-
-		var err error
-
-		win, err = glfw.CreateWindow(1280, 720, "Shader Basis", nil, nil)
-		if err != nil {
-			panic(err)
-		}
-
-		win.MakeContextCurrent()
-
-		glhf.Init()
-	})
-
-	width, height := win.GetFramebufferSize()
-
-	tr := toy.MakeToyRender(width, height)
+	tr := toy.MakeToyRender(720, 480)
 	tr.SetFragmentShaderPiece(fragmentToy)
 
-	shouldQuit := false
-	for !shouldQuit {
-		mainthread.Call(func() {
-			if win.ShouldClose() {
-				shouldQuit = true
-			}
+	//tr.Render()
+	//
+	//s := tr.ScreenShot()
+	//
+	//f, _ := os.Create("screenshot.jpg")
+	//
+	//jpeg.Encode(f, s, &jpeg.Options{
+	//	Quality: 100,
+	//})
+	//
+	//f.Close()
 
-			// Clear the window.
-			glhf.Clear(0, 0, 0, 1)
-		})
-
+	for !win.Closed() {
 		tr.Render()
 
-		mainthread.Call(func() {
-			win.SwapBuffers()
-			glfw.PollEvents()
-		})
+		win.Clear(colornames.Wheat)
+
+		tr.Draw(win, pixel.IM.Moved(win.Bounds().Center()))
+
+		win.Update()
 	}
 }
 
 func main() {
-	mainthread.Run(run)
+	pixelgl.Run(run)
 }

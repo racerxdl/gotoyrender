@@ -3,119 +3,29 @@ package toy
 import (
 	"github.com/faiface/glhf"
 	"github.com/faiface/mainthread"
+	"github.com/faiface/pixel"
 	"github.com/go-gl/mathgl/mgl32"
 	"image"
+	"image/color"
 	"time"
 )
 
-const baseFragmentShader = `
-#version 330 core
-
-out vec4 fragColor;
-
-uniform vec3 iResolution;
-uniform float iTime;
-
-uniform sampler2D iChannel0;
-uniform sampler2D iChannel1;
-uniform sampler2D iChannel2;
-uniform sampler2D iChannel3;
-
-vec4 texture(sampler2D s, vec2 c) { return texture2D(s,c); }
-void mainImage( out vec4 fragColor, in vec2 fragCoord );
-
-void main() {
-    fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-	mainImage(fragColor, gl_FragCoord.xy);
-    fragColor.w = 1.0;
-}`
-
-const defaultVertexShader = `
-#version 330 core
-
-in vec2 position;
-
-void main() {
-	gl_Position = vec4(position, 0.0, 1.0);
-}
-`
-
-const defaultFragmentShader = `
-void mainImage( out vec4 fragColor, in vec2 fragCoord ) {}
-`
-
-type uniformData struct {
-	glhf.Attr
-	Id        int
-	value     interface{}
-	IsPointer bool
-}
-
-func (ud *uniformData) Value() interface{} {
-	if !ud.IsPointer {
-		return ud.value
-	}
-	switch ud.Type {
-	case glhf.Vec2:
-		return *ud.value.(*mgl32.Vec2)
-	case glhf.Vec3:
-		return *ud.value.(*mgl32.Vec3)
-	case glhf.Vec4:
-		return *ud.value.(*mgl32.Vec4)
-	case glhf.Mat2:
-		return *ud.value.(*mgl32.Mat2)
-	case glhf.Mat23:
-		return *ud.value.(*mgl32.Mat2x3)
-	case glhf.Mat24:
-		return *ud.value.(*mgl32.Mat2x4)
-	case glhf.Mat3:
-		return *ud.value.(*mgl32.Mat3)
-	case glhf.Mat32:
-		return *ud.value.(*mgl32.Mat3x2)
-	case glhf.Mat34:
-		return *ud.value.(*mgl32.Mat3x4)
-	case glhf.Mat4:
-		return *ud.value.(*mgl32.Mat4)
-	case glhf.Mat42:
-		return *ud.value.(*mgl32.Mat4x2)
-	case glhf.Mat43:
-		return *ud.value.(*mgl32.Mat4x3)
-	case glhf.Int:
-		return *ud.value.(*int32)
-	case glhf.Float:
-		return *ud.value.(*float32)
-	default:
-		panic("invalid attrtype")
-	}
-}
-
 type Render struct {
-	shader      *glhf.Shader
-	screen      *glhf.VertexSlice
-	uniforms    map[string]*uniformData
-	uniformList glhf.AttrFormat
-	startTime   time.Time
-	resolution  mgl32.Vec3
-	shaderDirty bool
-	texChannels []*Texture
-
+	frame               *glhf.Frame
+	shader              *glhf.Shader
+	screen              *glhf.VertexSlice
+	uniforms            map[string]*uniformData
+	uniformList         glhf.AttrFormat
+	startTime           time.Time
+	resolution          mgl32.Vec3
+	shaderDirty         bool
+	texChannels         []*Texture
 	fragmentShaderPiece string
+	sprite              *pixel.Sprite
+	bounds              pixel.Rect
+	pixels              []uint8
+	pixelsDirty         bool
 }
-
-var (
-	defaultUniformValues = map[string]interface{}{
-		"iTime":       float32(0),
-		"iResolution": &mgl32.Vec3{0, 0, 1},
-		"iChannel0":   int32(0),
-		"iChannel1":   int32(1),
-		"iChannel2":   int32(2),
-		"iChannel3":   int32(3),
-	}
-
-	defaultVertexFormat = glhf.AttrFormat{
-		{Name: "position", Type: glhf.Vec2},
-	}
-)
 
 func MakeToyRender(width, height int) *Render {
 	tr := &Render{
@@ -125,7 +35,15 @@ func MakeToyRender(width, height int) *Render {
 		resolution:  mgl32.Vec3{float32(width), float32(height), 1},
 		shaderDirty: true,
 		texChannels: make([]*Texture, 4),
+		bounds:      pixel.R(0, 0, float64(width), float64(height)),
+		pixelsDirty: true,
 	}
+
+	tr.sprite = pixel.NewSprite(tr, tr.Bounds())
+
+	mainthread.Call(func() {
+		tr.frame = glhf.NewFrame(width, height, true)
+	})
 
 	tr.SetFragmentShaderPiece(defaultFragmentShader)
 
@@ -136,6 +54,11 @@ func MakeToyRender(width, height int) *Render {
 	tr.updateShader()
 
 	return tr
+}
+
+// Bounds returns the rectangular bounds of the Canvas.
+func (tr *Render) Bounds() pixel.Rect {
+	return tr.bounds
 }
 
 func (tr *Render) SetFragmentShaderPiece(main string) {
@@ -197,7 +120,7 @@ func (tr *Render) Render() {
 		tr.SetUniformValue("iChannel1", int32(1))
 		tr.SetUniformValue("iChannel2", int32(2))
 		tr.SetUniformValue("iChannel3", int32(3))
-
+		tr.frame.Begin()
 		// Clear the window.
 		glhf.Clear(0, 0, 0, 1)
 
@@ -223,6 +146,7 @@ func (tr *Render) Render() {
 		}
 
 		tr.shader.End()
+		tr.frame.End()
 	})
 }
 
@@ -287,4 +211,74 @@ func (tr *Render) updateShader() {
 	})
 
 	tr.shaderDirty = false
+}
+
+func (tr *Render) ScreenShot() image.Image {
+	tex := tr.frame.Texture()
+	img := image.NewNRGBA(image.Rect(0, 0, tex.Width(), tex.Height()))
+
+	pixels := tr.Pixels()
+	copy(img.Pix, pixels)
+
+	return img
+}
+
+// Draw draws the content of the Canvas onto another Target, transformed by the given Matrix, just
+// like if it was a Sprite containing the whole Canvas.
+func (tr *Render) Draw(t pixel.Target, matrix pixel.Matrix) {
+	tr.sprite.Draw(t, matrix)
+}
+
+// DrawColorMask draws the content of the Canvas onto another Target, transformed by the given
+// Matrix and multiplied by the given mask, just like if it was a Sprite containing the whole Canvas.
+//
+// If the color mask is nil, a fully opaque white mask will be used causing no effect.
+func (tr *Render) DrawColorMask(t pixel.Target, matrix pixel.Matrix, mask color.Color) {
+	tr.sprite.DrawColorMask(t, matrix, mask)
+}
+
+// Texture returns the underlying OpenGL Texture of this Canvas.
+//
+// Implements GLPicture interface.
+func (tr *Render) Texture() *glhf.Texture {
+	return tr.frame.Texture()
+}
+
+// Frame returns the underlying OpenGL Frame of this Canvas.
+func (tr *Render) Frame() *glhf.Frame {
+	return tr.frame
+}
+
+// Pixels returns an alpha-premultiplied RGBA sequence of the content of the Canvas.
+func (tr *Render) Pixels() []uint8 {
+	if tr.pixelsDirty {
+		mainthread.Call(func() {
+			tex := tr.frame.Texture()
+			tex.Begin()
+			tr.pixels = tex.Pixels(0, 0, tex.Width(), tex.Height())
+			tex.End()
+		})
+		tr.pixelsDirty = false
+	}
+
+	return tr.pixels
+}
+
+func (tr *Render) Color(at pixel.Vec) pixel.RGBA {
+	p := int((at.X * 4) + at.Y*tr.bounds.Max.X*4)
+	if p > len(tr.pixels)-4 {
+		return pixel.RGBA{
+			R: 0,
+			G: 0,
+			B: 0,
+			A: 1,
+		}
+	}
+
+	return pixel.RGBA{
+		R: float64(tr.pixels[p]) / 256,
+		G: float64(tr.pixels[p+1]) / 256,
+		B: float64(tr.pixels[p+2]) / 256,
+		A: float64(tr.pixels[p+3]) / 256,
+	}
 }
