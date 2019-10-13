@@ -1,6 +1,7 @@
 package toy
 
 import (
+	"fmt"
 	"github.com/faiface/glhf"
 	"github.com/faiface/mainthread"
 	"github.com/faiface/pixel"
@@ -16,8 +17,6 @@ type Render struct {
 	screen              *glhf.VertexSlice
 	uniforms            map[string]*uniformData
 	uniformList         glhf.AttrFormat
-	startTime           time.Time
-	resolution          mgl32.Vec3
 	shaderDirty         bool
 	texChannels         []*Texture
 	fragmentShaderPiece string
@@ -25,14 +24,29 @@ type Render struct {
 	bounds              pixel.Rect
 	pixels              []uint8
 	pixelsDirty         bool
+	vars                *shaderVars
 }
 
 func MakeToyRender(width, height int) *Render {
+	now := time.Now()
 	tr := &Render{
 		uniforms:    map[string]*uniformData{},
 		uniformList: glhf.AttrFormat{},
-		startTime:   time.Now(),
-		resolution:  mgl32.Vec3{float32(width), float32(height), 1},
+		vars: &shaderVars{
+			startTime:   now,
+			lastRender:  now,
+			resolution:  mgl32.Vec3{float32(width), float32(height), 1},
+			frameNumber: 0,
+			channelTime: [4]float32{0, 0, 0, 0},
+			channelResolution: [4]mgl32.Vec3{
+				{0, 0, 1},
+				{0, 0, 1},
+				{0, 0, 1},
+				{0, 0, 1},
+			},
+			mouse: mgl32.Vec4{0, 0, 0, 0},
+			date:  mgl32.Vec4{float32(now.Year()), float32(now.Month()), float32(now.Day()), float32(now.Second())},
+		},
 		shaderDirty: true,
 		texChannels: make([]*Texture, 4),
 		bounds:      pixel.R(0, 0, float64(width), float64(height)),
@@ -89,6 +103,7 @@ func (tr *Render) SetTextureData(n int, img *image.NRGBA) {
 	if tr.texChannels[n] == nil { // Create one
 		mainthread.Call(func() {
 			tr.texChannels[n] = NewTexture(b.Max.X, b.Max.Y, true, img.Pix)
+			tr.vars.channelResolution[n] = mgl32.Vec3{float32(b.Max.X), float32(b.Max.Y), 1}
 		})
 		return
 	}
@@ -98,6 +113,7 @@ func (tr *Render) SetTextureData(n int, img *image.NRGBA) {
 	if t.Width() == b.Max.X && t.Height() == b.Max.Y { // Existing at same size, so just replace contents
 		mainthread.Call(func() {
 			t.SetPixels(0, 0, b.Max.X, b.Max.Y, img.Pix)
+			tr.vars.channelResolution[n] = mgl32.Vec3{float32(b.Max.X), float32(b.Max.Y), 1}
 		})
 		return
 	}
@@ -105,21 +121,47 @@ func (tr *Render) SetTextureData(n int, img *image.NRGBA) {
 	// Exists but different size
 	mainthread.Call(func() {
 		tr.texChannels[n] = NewTexture(b.Max.X, b.Max.Y, true, img.Pix)
+		tr.vars.channelResolution[n] = mgl32.Vec3{float32(b.Max.X), float32(b.Max.Y), 1}
 	})
+}
+
+func (tr *Render) UpdateMouse(x, y float32, clicked bool) {
+	c := float32(1)
+	if !clicked {
+		x = 0
+		y = 0
+		c = 0
+	}
+
+	tr.vars.mouse = mgl32.Vec4{x, y, c, c}
 }
 
 func (tr *Render) Render() {
 	tr.updateShader()
 
 	mainthread.Call(func() {
-		iTime := float32(time.Since(tr.startTime).Seconds())
+		iTime := float32(time.Since(tr.vars.startTime).Seconds())
+		delta := float32(time.Since(tr.vars.lastRender).Seconds())
+
+		tr.vars.lastRender = time.Now()
+
 		tr.SetUniformValue("iTime", iTime)
-		tr.SetUniformValue("iResolution", &tr.resolution)
+		tr.SetUniformValue("iTimeDelta", delta)
+		tr.SetUniformValue("iResolution", &tr.vars.resolution)
+		tr.SetUniformValue("iFrame", tr.vars.frameNumber)
 
 		tr.SetUniformValue("iChannel0", int32(0))
 		tr.SetUniformValue("iChannel1", int32(1))
 		tr.SetUniformValue("iChannel2", int32(2))
 		tr.SetUniformValue("iChannel3", int32(3))
+
+		for i := range tr.vars.channelResolution {
+			tr.SetUniformValue(fmt.Sprintf("iChannelResolution[%d]", i), &tr.vars.channelResolution[i])
+			tr.SetUniformValue(fmt.Sprintf("iChannelTime[%d]", i), &tr.vars.channelTime[i])
+		}
+
+		tr.SetUniformValue("iMouse", &tr.vars.mouse)
+
 		tr.frame.Begin()
 		// Clear the window.
 		glhf.Clear(0, 0, 0, 1)
@@ -147,6 +189,7 @@ func (tr *Render) Render() {
 
 		tr.shader.End()
 		tr.frame.End()
+		tr.vars.frameNumber++
 	})
 }
 
