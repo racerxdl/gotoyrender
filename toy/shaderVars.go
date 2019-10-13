@@ -14,4 +14,6 @@ type shaderVars struct {
 	channelResolution [4]mgl32.Vec3
 	mouse             mgl32.Vec4
 	date              mgl32.Vec4
+	movieMode         bool
+	movieTime         float32
 }

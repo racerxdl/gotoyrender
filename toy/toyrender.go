@@ -44,8 +44,9 @@ func MakeToyRender(width, height int) *Render {
 				{0, 0, 1},
 				{0, 0, 1},
 			},
-			mouse: mgl32.Vec4{0, 0, 0, 0},
-			date:  mgl32.Vec4{float32(now.Year()), float32(now.Month()), float32(now.Day()), float32(now.Second())},
+			mouse:     mgl32.Vec4{0, 0, 0, 0},
+			date:      mgl32.Vec4{float32(now.Year()), float32(now.Month()), float32(now.Day()), float32(now.Second())},
+			movieMode: false,
 		},
 		shaderDirty: true,
 		texChannels: make([]*Texture, 4),
@@ -136,12 +137,25 @@ func (tr *Render) UpdateMouse(x, y float32, clicked bool) {
 	tr.vars.mouse = mgl32.Vec4{x, y, c, c}
 }
 
+func (tr *Render) SetMovieMode(movieEnabled bool) {
+	tr.vars.movieMode = movieEnabled
+}
+
+func (tr *Render) StepMovieTime(seconds float32) {
+	tr.vars.movieTime += seconds
+}
+
 func (tr *Render) Render() {
 	tr.updateShader()
 
 	mainthread.Call(func() {
 		iTime := float32(time.Since(tr.vars.startTime).Seconds())
 		delta := float32(time.Since(tr.vars.lastRender).Seconds())
+
+		if tr.vars.movieMode {
+			iTime = tr.vars.movieTime
+			iTime = tr.vars.movieTime
+		}
 
 		tr.vars.lastRender = time.Now()
 
@@ -190,6 +204,7 @@ func (tr *Render) Render() {
 		tr.shader.End()
 		tr.frame.End()
 		tr.vars.frameNumber++
+		tr.pixelsDirty = true
 	})
 }
 
